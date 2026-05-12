@@ -309,11 +309,16 @@ header::after {
 }
 .chip:hover { border-color: var(--accent); color: var(--accent); }
 .chip.on { font-weight: 600; }
-.chip.all.on  { background: var(--gab-bleu); border-color: var(--gab-bleu); color: #fff; }
-.chip.bm.on   { background: #2980B9; border-color: #2980B9; color: #fff; }
-.chip.bad.on  { background: #6B46C1; border-color: #6B46C1; color: #fff; }
-.chip.afd.on  { background: var(--gab-vert); border-color: var(--gab-vert); color: #fff; }
-.chip.pnud.on { background: #1565A8; border-color: #1565A8; color: #fff; }
+.chip.all.on   { background: var(--gab-bleu); border-color: var(--gab-bleu); color: #fff; }
+.chip.bm.on    { background: #2980B9; border-color: #2980B9; color: #fff; }
+.chip.bad.on   { background: #6B46C1; border-color: #6B46C1; color: #fff; }
+.chip.afd.on   { background: var(--gab-vert); border-color: var(--gab-vert); color: #fff; }
+.chip.pnud.on  { background: #1565A8; border-color: #1565A8; color: #fff; }
+.chip.ue.on    { background: #003399; border-color: #003399; color: #FFD700; }
+.chip.oms.on   { background: #3B9DDD; border-color: #3B9DDD; color: #fff; }
+.chip.unicef.on{ background: #00AEEF; border-color: #00AEEF; color: #fff; }
+.chip.fao.on   { background: #1A9850; border-color: #1A9850; color: #fff; }
+.chip.usaid.on { background: #BF0A30; border-color: #BF0A30; color: #fff; }
 
 .src-badge-wrap {
   padding: 8px 16px 4px;
@@ -787,10 +792,15 @@ header::after {
       <div class="flabel">Filtrer par bailleur</div>
       <div class="chips" id="bailChips">
         <div class="chip all on" data-bail="all">Tous</div>
-        <div class="chip bm"   data-bail="bm">Banque Mondiale</div>
-        <div class="chip bad"  data-bail="bad">BAD</div>
-        <div class="chip afd"  data-bail="afd">AFD</div>
-        <div class="chip pnud" data-bail="pnud">PNUD</div>
+        <div class="chip bm"    data-bail="bm">Banque Mondiale</div>
+        <div class="chip bad"   data-bail="bad">BAD</div>
+        <div class="chip afd"   data-bail="afd">AFD</div>
+        <div class="chip pnud"  data-bail="pnud">PNUD</div>
+        <div class="chip ue"    data-bail="ue">Union Européenne</div>
+        <div class="chip oms"   data-bail="oms">OMS</div>
+        <div class="chip unicef" data-bail="unicef">UNICEF</div>
+        <div class="chip fao"   data-bail="fao">FAO</div>
+        <div class="chip usaid" data-bail="usaid">USAID</div>
       </div>
     </div>
     <div class="src-badge-wrap">
@@ -815,6 +825,11 @@ header::after {
         <div class="ml-row"><div class="ml-dot" style="background:#6B46C1"></div>BAD</div>
         <div class="ml-row"><div class="ml-dot" style="background:#009E60"></div>AFD</div>
         <div class="ml-row"><div class="ml-dot" style="background:#1565A8"></div>PNUD</div>
+        <div class="ml-row"><div class="ml-dot" style="background:#003399"></div>Union Européenne</div>
+        <div class="ml-row"><div class="ml-dot" style="background:#3B9DDD"></div>OMS</div>
+        <div class="ml-row"><div class="ml-dot" style="background:#00AEEF"></div>UNICEF</div>
+        <div class="ml-row"><div class="ml-dot" style="background:#1A9850"></div>FAO</div>
+        <div class="ml-row"><div class="ml-dot" style="background:#BF0A30"></div>USAID</div>
         <div class="ml-row"><div class="ml-dot" style="background:#718096"></div>Autre</div>
       </div>
       <div class="map-src">
@@ -894,7 +909,10 @@ header::after {
 <!-- IATI CONNECTOR -->
 <div id="connPanel">
   <div class="cp-title">🔌 Connecteur IATI</div>
-  <div class="cp-row"><div class="cp-label">Clé API IATI</div><input class="cp-input" id="cpKey" type="password" placeholder="Ocp-Apim-Subscription-Key…"></div>
+  <div style="background:var(--success-bg);border:1px solid #9AE6B4;border-radius:var(--radius-sm);padding:8px 12px;font-size:11px;color:var(--success);margin-bottom:10px;">
+    🔒 Clé API sécurisée côté serveur (Cloudflare Worker)
+  </div>
+  <input type="hidden" id="cpKey" value="">
   <div class="cp-row" style="display:flex;gap:10px;">
     <div style="flex:1"><div class="cp-label">Code pays</div><input class="cp-input" id="cpCountry" value="GA"></div>
     <div style="flex:1"><div class="cp-label">Nb projets</div><input class="cp-input" id="cpRows" type="number" value="150"></div>
@@ -911,10 +929,18 @@ header::after {
 // ═══════════════════════════════════════════
 // CONSTANTES
 // ═══════════════════════════════════════════
-const IATI_KEY_DEFAULT = '03e36c72c9874bd98bb28cb437ea650e';
+const IATI_KEY_DEFAULT = ''; // Clé gérée côté serveur (Cloudflare Worker)
 const WORKER_URL = 'https://sigdep-iati-proxy.mintsa-andrecharles.workers.dev';
-const COLORS = {bm:'#2980B9',bad:'#6B46C1',afd:'#009E60',pnud:'#1565A8',other:'#718096'};
-const NAMES  = {bm:'Banque Mondiale',bad:'BAD',afd:'AFD',pnud:'PNUD',other:'Autre'};
+const COLORS = {
+  bm:'#2980B9', bad:'#6B46C1', afd:'#009E60', pnud:'#1565A8',
+  ue:'#003399',  oms:'#3B9DDD', unicef:'#00AEEF', fao:'#1A9850', usaid:'#BF0A30',
+  other:'#718096'
+};
+const NAMES = {
+  bm:'Banque Mondiale', bad:'BAD', afd:'AFD', pnud:'PNUD',
+  ue:'Union Européenne', oms:'OMS', unicef:'UNICEF', fao:'FAO', usaid:'USAID',
+  other:'Autre'
+};
 const PROV_COORDS = {
   'Estuaire':[9.45,0.39],'Woleu-Ntem':[11.9,2.1],'Ogooué-Ivindo':[13.18,0.88],
   'Moyen-Ogooué':[10.7,-0.35],'Ogooué-Maritime':[8.9,-0.65],'Ngounié':[11.2,-1.55],
@@ -935,6 +961,11 @@ const DEMO = [
   {id:'D7',iati_id:'PNUD-GAB-2020-HLT',bailleur:'pnud',titre:'Santé Maternelle et Infantile — PSMI',secteur:'Santé',statut:'actif',avancement:65,montant:'42 M USD',montantNum:42e6,debut:'Juil 2020',fin:'Juin 2025',province:'Ngounié',lon:11.86,lat:-1.56,desc:"Réduction de la mortalité maternelle et infantile dans les provinces du Sud.",composantes:[{n:'18 centres de santé',a:'20 M USD'},{n:'Équipements',a:'12 M USD'},{n:'Formation',a:'10 M USD'}]},
   {id:'D8',iati_id:'FR-3-GAB-AGR-2025',bailleur:'afd',titre:'Diversification Agricole — PADA',secteur:'Agriculture',statut:'pipeline',avancement:8,montant:'60 M EUR',montantNum:65e6,debut:'Jan 2025',fin:'Déc 2030',province:'Woleu-Ntem',lon:11.86,lat:2.13,desc:"Développement de filières agricoles durables : cacao, manioc, coopératives rurales.",composantes:[{n:'Filières cacao/café',a:'22 M EUR'},{n:'Pistes rurales',a:'18 M EUR'},{n:'Coopératives',a:'20 M EUR'}]},
   {id:'D9',iati_id:'WB-GAB-P181245',bailleur:'bm',titre:'Filets Sociaux Productifs — Phase 2',secteur:'Protection sociale',statut:'actif',avancement:38,montant:'95 M USD',montantNum:95e6,debut:'Fév 2023',fin:'Jan 2028',province:'Ngounié',lon:11.0,lat:-1.8,desc:"Extension du programme national de transferts monétaires aux populations vulnérables.",composantes:[{n:'Transferts monétaires',a:'55 M USD'},{n:'Registre social',a:'25 M USD'},{n:'Appui DGCAS',a:'15 M USD'}]},
+  {id:'D10',iati_id:'EU-DEVCO-GAB-2022-01',bailleur:'ue',titre:'Programme d'Appui à la Gestion des Ressources Naturelles (PGRN)',secteur:'Environnement',statut:'actif',avancement:52,montant:'45 M EUR',montantNum:49e6,debut:'Mar 2022',fin:'Mar 2027',province:'Ogooué-Ivindo',lon:13.3,lat:0.7,desc:"Amélioration de la gouvernance et de la gestion durable des ressources forestières et minières dans le cadre du partenariat UE-Gabon.",composantes:[{n:'Gouvernance forestière',a:'20 M EUR'},{n:'Chaînes de valeur durables',a:'15 M EUR'},{n:'Appui institutionnel',a:'10 M EUR'}]},
+  {id:'D11',iati_id:'WHO-GAB-2023-HEALTH',bailleur:'oms',titre:'Renforcement du Système de Surveillance Épidémiologique',secteur:'Santé',statut:'actif',avancement:68,montant:'8 M USD',montantNum:8e6,debut:'Jan 2023',fin:'Déc 2025',province:'Estuaire',lon:9.42,lat:0.36,desc:"Renforcement des capacités nationales de détection et réponse aux épidémies, y compris post-COVID-19, dans le cadre du Règlement Sanitaire International.",composantes:[{n:'Surveillance épidémiologique',a:'3,5 M USD'},{n:'Laboratoires de référence',a:'2,8 M USD'},{n:'Formation agents de santé',a:'1,7 M USD'}]},
+  {id:'D12',iati_id:'UNICEF-GAB-2022-WASH',bailleur:'unicef',titre:'Eau, Assainissement et Hygiène en Milieu Scolaire (WASH)',secteur:'Eau et assainissement',statut:'actif',avancement:44,montant:'12 M USD',montantNum:12e6,debut:'Sep 2022',fin:'Août 2026',province:'Ngounié',lon:11.4,lat:-1.8,desc:"Amélioration de l'accès à l'eau potable et aux installations sanitaires dans 180 établissements scolaires des zones rurales du Gabon.",composantes:[{n:'Construction points d'eau',a:'5 M USD'},{n:'Latrines scolaires',a:'4 M USD'},{n:'Sensibilisation hygiène',a:'3 M USD'}]},
+  {id:'D13',iati_id:'FAO-GAB-2023-FOOD',bailleur:'fao',titre:'Appui à la Sécurité Alimentaire et à l'Agriculture Familiale',secteur:'Agriculture',statut:'pipeline',avancement:12,montant:'6 M USD',montantNum:6e6,debut:'Jan 2024',fin:'Déc 2027',province:'Woleu-Ntem',lon:12.1,lat:2.0,desc:"Renforcement de la production vivrière locale et sécurisation de l'alimentation des ménages ruraux par l'appui aux coopératives agricoles familiales.",composantes:[{n:'Intrants et semences',a:'2,5 M USD'},{n:'Formation agriculteurs',a:'2 M USD'},{n:'Marchés ruraux',a:'1,5 M USD'}]},
+  {id:'D14',iati_id:'USAID-GAB-2022-FOREST',bailleur:'usaid',titre:'Conservation des Forêts du Bassin du Congo — Composante Gabon',secteur:'Environnement',statut:'actif',avancement:60,montant:'18 M USD',montantNum:18e6,debut:'Oct 2021',fin:'Sep 2026',province:'Ogooué-Ivindo',lon:13.5,lat:1.2,desc:"Protection des forêts tropicales gabonaises dans le cadre du programme régional CARPE (Central African Regional Program for the Environment).",composantes:[{n:'Aires protégées & biodiversité',a:'9 M USD'},{n:'Communautés forestières',a:'5 M USD'},{n:'Monitoring satellitaire',a:'4 M USD'}]},
 ];
 
 // ═══════════════════════════════════════════
@@ -978,7 +1009,7 @@ function loadScript(src) {
 async function init() {
   setSyncState('loading','Initialisation…');
   document.getElementById('lmsg').textContent = 'Chargement carte OpenStreetMap…';
-  document.getElementById('cpKey').value = IATI_KEY_DEFAULT;
+  // Clé gérée côté serveur — aucune clé en clair dans le navigateur
   document.getElementById('dashDate').textContent = new Date().toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
 
   // 1. Carte Leaflet
@@ -987,7 +1018,7 @@ async function init() {
   // 2. IATI via Cloudflare Worker
   document.getElementById('lmsg').textContent = 'Connexion IATI…';
   try {
-    const projs = await fetchIATI(IATI_KEY_DEFAULT, 'GA', 150);
+    const projs = await fetchIATI('', 'GA', 150);
     if (projs.length > 0) { loadProjects(projs, true); }
     else { loadProjects(DEMO, false); }
   } catch(e) {
@@ -1002,7 +1033,9 @@ async function init() {
 // FETCH IATI
 // ═══════════════════════════════════════════
 async function fetchIATI(key, country, rows) {
-  const url = `${WORKER_URL}?key=${encodeURIComponent(key)}&country=${country}&rows=${rows}`;
+  // La clé IATI est stockée dans Cloudflare Worker (variable secrète env.IATI_KEY)
+  // On n'envoie plus la clé depuis le navigateur — sécurité renforcée
+  const url = `${WORKER_URL}?country=${country}&rows=${rows}`;
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`Worker HTTP ${resp.status}`);
   const data = await resp.json();
@@ -1041,12 +1074,24 @@ function parseDoc(doc, i) {
 
 function narr(f){ if(!f)return''; if(Array.isArray(f)) return f.find(s=>s&&s.length>3)||f[0]||''; return String(f); }
 function detectBail(ref, name) {
-  const r=String(ref||'');
-  if(r.includes('918')||r.includes('44000')) return 'bm';
+  const r = String(ref||'');
+  // Refs IATI officielles
+  if(r.includes('XM-DAC-918-2')||r.includes('XM-DAC-918-EC')||r.includes('EU-DEVCO')||r.includes('XI-IATI-EC')) return 'ue';
+  if(r.includes('918')||r.includes('44000')||r.includes('XM-DAC-903')) return 'bm';
   if(r.includes('46002')||r.includes('46004')) return 'bad';
+  if(r.includes('XM-DAC-928')||r.includes('WHO')) return 'oms';
+  if(r.includes('41122')||r.includes('UNICEF')) return 'unicef';
+  if(r.includes('41301')||r.includes('FAO')) return 'fao';
+  if(r.includes('XM-DAC-1')||r.includes('US-GOV-1')||r.includes('USAID')) return 'usaid';
   if(r.includes('XM-DAC-4')||r.includes('FR-3')) return 'afd';
   if(r.includes('41114')) return 'pnud';
-  const n=narr(name).toLowerCase();
+  // Fallback par nom
+  const n = narr(name).toLowerCase();
+  if(n.includes('european union')||n.includes('union européenne')||n.includes('european commission')||n.includes('devco')||n.includes('intpa')) return 'ue';
+  if(n.includes('world health')||n.includes('who')||n.includes('oms')) return 'oms';
+  if(n.includes('unicef')||n.includes('united nations children')) return 'unicef';
+  if(n.includes('food and agriculture')||n.includes(' fao')||n.includes('alimentation')) return 'fao';
+  if(n.includes('usaid')||n.includes('united states agency')) return 'usaid';
   if(n.includes('world bank')||n.includes('banque mondiale')) return 'bm';
   if(n.includes('african development')||n.includes('afdb')) return 'bad';
   if(n.includes('agence française')||n.includes(' afd')) return 'afd';
@@ -1416,10 +1461,9 @@ function showCpStatus(type, msg) {
 }
 function toggleConn() { document.getElementById('connPanel').classList.toggle('show'); }
 async function connectIATI() {
-  const key=document.getElementById('cpKey').value.trim();
+  const key=''; // Géré par le Worker
   const country=document.getElementById('cpCountry').value.trim().toUpperCase()||'GA';
   const rows=parseInt(document.getElementById('cpRows').value)||150;
-  if(!key){showCpStatus('err','⚠️ Clé API requise');return;}
   setSyncState('loading','Connexion IATI…'); showCpStatus('','');
   try {
     const projs=await fetchIATI(key,country,rows);
