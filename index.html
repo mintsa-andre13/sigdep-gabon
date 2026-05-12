@@ -6,6 +6,7 @@
 <title>SIGDEP — Gabon | Cartographie des Projets de Développement</title>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 /* ═══════════════════════════════════════════
    PALETTE GABON INSTITUTIONNEL
@@ -987,8 +988,11 @@ function showView(v) {
   document.querySelectorAll('.tab')[v==='map'?0:1].classList.add('on');
   if (v === 'dash') {
     if (!window.d3) {
+      // Charger D3 avec fallback unpkg
       loadScript('https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js')
-        .then(renderDashboard).catch(renderDashboard);
+        .catch(() => loadScript('https://unpkg.com/d3@7/dist/d3.min.js'))
+        .then(renderDashboard)
+        .catch(renderDashboard); // Rendre même sans D3 (donut désactivé)
     } else {
       renderDashboard();
     }
@@ -1006,26 +1010,48 @@ function loadScript(src) {
   });
 }
 
+// Utilitaire : Promise avec timeout
+function withTimeout(promise, ms, fallback) {
+  const timer = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms));
+  return Promise.race([promise, timer]).catch(() => fallback);
+}
+
 async function init() {
-  setSyncState('loading','Initialisation…');
-  document.getElementById('lmsg').textContent = 'Chargement carte OpenStreetMap…';
-  // Clé gérée côté serveur — aucune clé en clair dans le navigateur
-  document.getElementById('dashDate').textContent = new Date().toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+  setSyncState('loading', 'Initialisation…');
+  document.getElementById('dashDate').textContent =
+    new Date().toLocaleDateString('fr-FR', {month:'long', year:'numeric'});
 
-  // 1. Carte Leaflet
-  try { await setupMap(); } catch(e) { console.warn('Carte erreur:', e.message); }
-
-  // 2. IATI via Cloudflare Worker
-  document.getElementById('lmsg').textContent = 'Connexion IATI…';
+  // ── 1. Carte Leaflet (timeout 5s) ──────────────────────────────
+  document.getElementById('lmsg').textContent = 'Chargement carte…';
   try {
-    const projs = await fetchIATI('', 'GA', 150);
-    if (projs.length > 0) { loadProjects(projs, true); }
-    else { loadProjects(DEMO, false); }
+    let attempts = 0;
+    while (!window.L && attempts < 50) {
+      await new Promise(r => setTimeout(r, 100));
+      attempts++;
+    }
+    if (window.L) {
+      await withTimeout(setupMap(), 5000, null);
+    }
   } catch(e) {
-    console.warn('IATI init error:', e.message);
-    loadProjects(DEMO, false);
+    console.warn('Carte:', e.message);
   }
 
+  // ── 2. Données : IATI d'abord, démo en fallback immédiat ───────
+  document.getElementById('lmsg').textContent = 'Chargement données…';
+
+  // Charger DÉMO immédiatement pour que la carte ne reste pas vide
+  loadProjects(DEMO, false);
+
+  // Puis tenter IATI en arrière-plan (timeout 8s)
+  withTimeout(fetchIATI('', 'GA', 150), 8000, [])
+    .then(projs => {
+      if (projs && projs.length > 0) {
+        loadProjects(projs, true);
+      }
+    })
+    .catch(e => console.warn('IATI:', e.message));
+
+  // ── 3. Cacher le loading overlay ───────────────────────────────
   document.getElementById('map-loading').classList.add('hide');
 }
 
@@ -1041,35 +1067,56 @@ async function fetchIATI(key, country, rows) {
   const data = await resp.json();
   if (data.error) throw new Error(data.error);
   const docs = data?.response?.docs || [];
-  return docs.map((d, i) => parseDoc(d, i));
+  return docs.map((d, i) => parseDoc(d, i)).filter(Boolean); // Filtrer les projets malformés
 }
 
 function parseDoc(doc, i) {
-  const bail  = detectBail(doc.reporting_org_ref, doc.reporting_org_narrative);
-  const titre = narr(doc.title_narrative) || 'Projet sans titre';
-  const desc  = narr(doc.description_narrative) || '';
-  const statut = {'1':'pipeline','2':'actif','3':'actif','4':'cloture','5':'cloture'}[String(doc.activity_status_code||'2')] || 'actif';
-  const budgets = doc.budget_value;
-  let mNum = 0;
-  if (Array.isArray(budgets)) mNum = budgets.reduce((s,v)=>s+(parseFloat(v)||0),0);
-  else if (budgets) mNum = parseFloat(budgets)||0;
-  const province = detectProv(doc.location_name);
-  const [lonBase, latBase] = PROV_COORDS[province] || [9.45, 0.39];
-  return {
-    id: doc.iati_identifier || `IATI-${i}`,
-    iati_id: doc.iati_identifier || '',
-    bailleur: bail, titre, desc: desc.substring(0,350),
-    secteur: detectSect(doc.sector_code),
-    statut, avancement: estimAv(doc.activity_date_start_planned, doc.activity_date_end_planned, statut),
-    montant: mNum > 0 ? fmtMontant(mNum) : 'N/D',
-    montantNum: mNum,
-    debut: fmtDate(doc.activity_date_start_planned),
-    fin:   fmtDate(doc.activity_date_end_planned),
-    province,
-    lon: lonBase + (Math.random()-.5)*.25,
-    lat: latBase + (Math.random()-.5)*.25,
-    composantes: [], source: 'iati'
-  };
+  try {
+    const bail  = detectBail(doc.reporting_org_ref, doc.reporting_org_narrative);
+    const titre = narr(doc.title_narrative) || 'Projet sans titre';
+    // Tronquer descriptions très longues (certaines font 10 000+ chars)
+    const descRaw = narr(doc.description_narrative) || '';
+    const desc = descRaw.replace(/<[^>]*>/g,'').substring(0, 400);
+    const statut = {'1':'pipeline','2':'actif','3':'actif','4':'cloture','5':'cloture'}[String(doc.activity_status_code||'2')] || 'actif';
+    const budgets = doc.budget_value;
+    let mNum = 0;
+    if (Array.isArray(budgets)) mNum = budgets.reduce((s,v)=>s+(parseFloat(v)||0),0);
+    else if (budgets) mNum = parseFloat(budgets)||0;
+    const province = detectProv(doc.location_name);
+    const [lonBase, latBase] = PROV_COORDS[province] || [9.45, 0.39];
+    // Secteur : essayer sector_code, puis sector_narrative
+    let secteur = detectSect(doc.sector_code);
+    if (secteur === 'Développement' && doc.sector_narrative) {
+      const sn = narr(doc.sector_narrative).toLowerCase();
+      if (sn.includes('health')||sn.includes('santé')) secteur = 'Santé';
+      else if (sn.includes('education')||sn.includes('éducation')) secteur = 'Éducation';
+      else if (sn.includes('environment')||sn.includes('environnement')||sn.includes('biodiversity')) secteur = 'Environnement';
+      else if (sn.includes('transport')||sn.includes('road')||sn.includes('infrastructure')) secteur = 'Infrastructures';
+      else if (sn.includes('agriculture')||sn.includes('food')) secteur = 'Agriculture';
+      else if (sn.includes('governance')||sn.includes('gouvernance')) secteur = 'Gouvernance';
+      else if (sn.includes('water')||sn.includes('wash')||sn.includes('eau')) secteur = 'Eau & assainissement';
+      else if (sn.includes('energy')||sn.includes('énergie')) secteur = 'Énergie';
+      else if (sn.includes('urban')||sn.includes('urbain')||sn.includes('city')) secteur = 'Urbanisme';
+    }
+    return {
+      id: doc.iati_identifier || `IATI-${i}`,
+      iati_id: doc.iati_identifier || '',
+      bailleur: bail, titre, desc, secteur,
+      statut, avancement: estimAv(doc.activity_date_start_planned, doc.activity_date_end_planned, statut),
+      montant: mNum > 0 ? fmtMontant(mNum) : 'N/D',
+      montantNum: mNum,
+      debut: fmtDate(doc.activity_date_start_planned),
+      fin:   fmtDate(doc.activity_date_end_planned),
+      province,
+      lon: lonBase + (Math.random()-.5)*.25,
+      lat: latBase + (Math.random()-.5)*.25,
+      composantes: [], source: 'iati'
+    };
+  } catch(e) {
+    // Ne jamais faire crasher toute la liste à cause d'un seul projet malformé
+    console.warn(`parseDoc[${i}] erreur:`, e.message);
+    return null;
+  }
 }
 
 function narr(f){ if(!f)return''; if(Array.isArray(f)) return f.find(s=>s&&s.length>3)||f[0]||''; return String(f); }
@@ -1096,17 +1143,40 @@ function detectBail(ref, name) {
   if(n.includes('african development')||n.includes('afdb')) return 'bad';
   if(n.includes('agence française')||n.includes(' afd')) return 'afd';
   if(n.includes('undp')||n.includes('pnud')) return 'pnud';
+  if(n.includes('global environment facility')||n.includes('gef')) return 'ue'; // GEF → UE (plus proche)
+  if(n.includes('maedi')||n.includes('ministère des affaires étrangères')) return 'afd';
   return 'other';
 }
 function detectSect(codes) {
-  const c=parseInt(Array.isArray(codes)?codes[0]:codes||'0');
-  if(c>=110&&c<120) return 'Éducation';
-  if(c>=120&&c<130) return 'Santé';
-  if(c>=210&&c<220) return 'Infrastructures';
-  if(c>=230&&c<240) return 'Énergie';
-  if(c>=310&&c<320) return 'Agriculture';
-  if(c>=410&&c<430) return 'Environnement';
-  if(c>=150&&c<160) return 'Gouvernance';
+  if (!codes) return 'Développement';
+  const arr = Array.isArray(codes) ? codes : [codes];
+  // Chercher le premier code numérique valide
+  for (const raw of arr) {
+    const str = String(raw || '').trim();
+    // Ignorer les codes non-numériques (ex: "B", "C", "L")
+    if (!/^\d/.test(str)) continue;
+    const n = parseInt(str);
+    if (isNaN(n)) continue;
+    if (n>=110 && n<120) return 'Éducation';
+    if (n>=120 && n<130) return 'Santé';
+    if (n>=130 && n<140) return 'Population & santé';
+    if (n>=140 && n<150) return 'Eau & assainissement';
+    if (n>=150 && n<160) return 'Gouvernance';
+    if (n>=160 && n<170) return 'Protection sociale';
+    if (n>=210 && n<220) return 'Infrastructures';
+    if (n>=220 && n<230) return 'Eau & assainissement';
+    if (n>=230 && n<240) return 'Énergie';
+    if (n>=240 && n<250) return 'Services financiers';
+    if (n>=250 && n<260) return 'Entreprises';
+    if (n>=310 && n<320) return 'Agriculture';
+    if (n>=320 && n<330) return 'Industrie';
+    if (n>=410 && n<430) return 'Environnement';
+    if (n>=430 && n<440) return 'Multisectoriel';
+    if (n>=720 && n<740) return 'Aide humanitaire';
+    if (n>=910 && n<920) return 'Administration';
+    if (n>=920 && n<930) return 'Soutien ONG';
+  }
+  // Fallback : chercher mots-clés dans sector_narrative si disponible
   return 'Développement';
 }
 function detectProv(loc) {
@@ -1205,9 +1275,7 @@ function renderList() {
 // CARTE LEAFLET
 // ═══════════════════════════════════════════
 async function setupMap() {
-  if (!window.L) {
-    await loadScript('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js');
-  }
+  // Leaflet chargé statiquement dans le <head>
   leafletMap = L.map('leaflet-map', {
     center: [-0.6, 11.6], zoom: 6,
     zoomControl: true, attributionControl: true,
@@ -1375,7 +1443,10 @@ function renderDonut() {
   PROJECTS.forEach(p => { if(!bMap[p.bailleur])bMap[p.bailleur]={montant:0,n:0}; bMap[p.bailleur].montant+=(p.montantNum||0); bMap[p.bailleur].n++; });
   const data = Object.entries(bMap).map(([k,v])=>({key:k,name:NAMES[k]||k,color:COLORS[k]||COLORS.other,montant:v.montant,n:v.n})).sort((a,b)=>b.montant-a.montant);
   const total = data.reduce((s,d)=>s+d.montant,0);
-  if(!window.d3||!data.length) return;
+  // Légende toujours rendue (même sans D3)
+  const leg=document.getElementById('dLeg'); leg.innerHTML='';
+  data.forEach(d=>{const pct=total>0?Math.round(d.montant/total*100):0;leg.innerHTML+=`<div class="dl-i"><div class="dl-dot" style="background:${d.color}"></div><div class="dl-n">${d.name}</div><div class="dl-v">${fmtMontant(d.montant)}</div><div class="dl-p">${pct}%</div></div>`;});
+  if(!window.d3||!data.length) return; // Donut SVG nécessite D3
   const W=140,H=140,R=58,r=30;
   const s=d3.select('#donutSvg').attr('viewBox','0 0 140 140'); s.selectAll('*').remove();
   const pie=d3.pie().value(d=>d.montant).sort(null);
@@ -1485,7 +1556,12 @@ function copyLink() {
 // ═══════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════
-init();
+// Lancer après chargement complet du DOM
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
 </script>
 </body>
 </html>
