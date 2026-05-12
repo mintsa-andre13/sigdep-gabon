@@ -1440,25 +1440,44 @@ function renderAlerts() {
 
 function renderDonut() {
   const bMap = {};
-  PROJECTS.forEach(p => { if(!bMap[p.bailleur])bMap[p.bailleur]={montant:0,n:0}; bMap[p.bailleur].montant+=(p.montantNum||0); bMap[p.bailleur].n++; });
-  const data = Object.entries(bMap).map(([k,v])=>({key:k,name:NAMES[k]||k,color:COLORS[k]||COLORS.other,montant:v.montant,n:v.n})).sort((a,b)=>b.montant-a.montant);
+  PROJECTS.forEach(p => {
+    if(!bMap[p.bailleur]) bMap[p.bailleur]={montant:0,n:0};
+    bMap[p.bailleur].montant += (p.montantNum||0);
+    bMap[p.bailleur].n++;
+  });
+  const data = Object.entries(bMap)
+    .map(([k,v])=>({key:k,name:NAMES[k]||k,color:COLORS[k]||COLORS.other,montant:v.montant,n:v.n}))
+    .sort((a,b)=>b.montant-a.montant);
   const total = data.reduce((s,d)=>s+d.montant,0);
-  // Légende toujours rendue (même sans D3)
-  const leg=document.getElementById('dLeg'); leg.innerHTML='';
-  data.forEach(d=>{const pct=total>0?Math.round(d.montant/total*100):0;leg.innerHTML+=`<div class="dl-i"><div class="dl-dot" style="background:${d.color}"></div><div class="dl-n">${d.name}</div><div class="dl-v">${fmtMontant(d.montant)}</div><div class="dl-p">${pct}%</div></div>`;});
-  if(!window.d3||!data.length) return; // Donut SVG nécessite D3
+
+  // Légende (fonctionne avec ou sans D3)
+  const legEl = document.getElementById('dLeg');
+  if (legEl) {
+    legEl.innerHTML = '';
+    data.forEach(d => {
+      const pct = total>0 ? Math.round(d.montant/total*100) : 0;
+      legEl.innerHTML += `<div class="dl-i"><div class="dl-dot" style="background:${d.color}"></div><div class="dl-n">${d.name}</div><div class="dl-v">${fmtMontant(d.montant)}</div><div class="dl-p">${pct}%</div></div>`;
+    });
+  }
+
+  // Donut SVG (nécessite D3)
+  if (!window.d3 || !data.length) return;
   const W=140,H=140,R=58,r=30;
-  const s=d3.select('#donutSvg').attr('viewBox','0 0 140 140'); s.selectAll('*').remove();
-  const pie=d3.pie().value(d=>d.montant).sort(null);
-  const arc=d3.arc().outerRadius(R).innerRadius(r);
-  const g=s.append('g').attr('transform','translate(70,70)');
+  const svgEl = d3.select('#donutSvg').attr('viewBox','0 0 140 140');
+  svgEl.selectAll('*').remove();
+  const pie = d3.pie().value(d=>d.montant).sort(null);
+  const arc = d3.arc().outerRadius(R).innerRadius(r);
+  const g = svgEl.append('g').attr('transform','translate(70,70)');
   g.selectAll('path').data(pie(data)).enter().append('path')
     .attr('fill',d=>d.data.color).attr('stroke','#fff').attr('stroke-width',2).attr('d',arc)
-    .transition().duration(700).attrTween('d',function(d){const i=d3.interpolate({startAngle:d.startAngle,endAngle:d.startAngle},d);return t=>arc(i(t));});
-  g.append('text').attr('text-anchor','middle').attr('dy','-4').attr('font-family',"'Roboto Condensed',sans-serif").attr('font-size','14').attr('font-weight','700').attr('fill','#1A2332').text(fmtMontant(total).split(' ')[0]);
-  g.append('text').attr('text-anchor','middle').attr('dy','11').attr('font-size','9').attr('fill','#718096').text('Total USD');
-  const leg=document.getElementById('dLeg'); leg.innerHTML='';
-  data.forEach(d=>{const pct=total>0?Math.round(d.montant/total*100):0;leg.innerHTML+=`<div class="dl-i"><div class="dl-dot" style="background:${d.color}"></div><div class="dl-n">${d.name}</div><div class="dl-v">${fmtMontant(d.montant)}</div><div class="dl-p">${pct}%</div></div>`;});
+    .transition().duration(700)
+    .attrTween('d',function(d){const i=d3.interpolate({startAngle:d.startAngle,endAngle:d.startAngle},d);return t=>arc(i(t));});
+  g.append('text').attr('text-anchor','middle').attr('dy','-4')
+    .attr('font-family',"'Roboto Condensed',sans-serif").attr('font-size','14')
+    .attr('font-weight','700').attr('fill','#1A2332')
+    .text(fmtMontant(total).split(' ')[0]);
+  g.append('text').attr('text-anchor','middle').attr('dy','11')
+    .attr('font-size','9').attr('fill','#718096').text('Total USD');
 }
 
 function renderSectBars() {
